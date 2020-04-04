@@ -21,7 +21,7 @@ task install(type: Copy, dependsOn:[installDist, deleteJars]) {
   
   ${versionText()}
   
-  java %JAVA_OPTS% -cp \"%~dp0${String.join(';%~dp0', libdir.list())}\" ${mainClassName} %*
+  java %JVM_OPTS% %JAVA_OPTS% -cp \"%~dp0${String.join(';%~dp0', libdir.list())}\" ${mainClassName} %*
   
   """.stripIndent()
   println('installed in: '+appdir)
