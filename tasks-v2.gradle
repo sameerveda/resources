@@ -1,0 +1,112 @@
+import java.nio.file.Files
+import static java.nio.file.StandardCopyOption.*
+import java.nio.file.Paths
+
+class SamInstallExtension {
+  String dest
+  boolean flat = false
+  // if true, dest is resolved relative to SAM_PROGRAMS
+  boolean relativeToPrograms = false
+  Map envs = [:]
+  String cmdName
+  // in future this should be by default true
+  boolean deleteOldJars = false
+}
+
+class SamInstallPlugin implements Plugin {
+  void apply(project) {
+    def extension = project.extensions.create('samInstall', SamInstallExtension)
+    project.task('install', dependsOn: [project.installDist]) {
+      doLast {
+        def libdir = new File(project.installDist.destinationDir, 'lib')
+        if (!libdir.exists())
+          throw new IllegalStateException("not found compiled dir: " + libdir);
+          
+        def dest = validate(extension)
+        def jarPaths = null
+        
+        if(extension.deleteOldJars)
+          deleteJars(dest)
+        
+        if(extension.flat)
+          jarPaths = flattened(project.configurations.runtimeClasspath, libdir, dest, project.jar.archiveName)
+        else 
+          full()
+          
+        def cmdName = extension.cmdName ?: project.jar.archiveName - '.jar' + '.cmd'
+        createCmdFile(new File(dest, cmdName), jarPaths, project.version, project.mainClassName, extension.envs.collect{"SET ${it.key}=${it.value}"}.join('\n'))
+      }
+    }
+  }
+  
+  def flattened(deps, libdir, dest, jarName) {
+    def gradleDir = Paths.get(Objects.requireNonNull(System.env.GRADLE_USER_HOME, "System.env.GRADLE_USER_HOME not set"))
+    def flattenDest = Paths.get(Objects.requireNonNull(System.env.JRE_FLATTEN_DIR, "System.env.JRE_FLATTEN_DIR not set"))
+    
+    if(Files.notExists(flattenDest))
+      Files.createDirectory(flattenDest)
+    def flatFiles = deps.findAll{it.toPath().startsWith(gradleDir)}.collect{flattenDest.resolve(it.name)}
+    flatFiles.each{Files.move(libdir.toPath().resolve(it.fileName), it, REPLACE_EXISTING)}
+    def prefix = jarName - '.jar';
+    def destFiles = libdir.list().collect{[it, it == jarName || !it.endsWith('.jar') ? '' : prefix + '-' + it]}
+    dest.list().findAll{it.endsWith('.jar') && it.startsWith(prefix)}.each{new File(dest, it).delete()}
+    destFiles.each{Files.move(libdir.toPath().resolve(it[0]), dest.toPath().resolve(it[1] ?: it[0]), REPLACE_EXISTING)}
+    
+    print '' + flattenDest + '\n  ' + flatFiles.collect{it.fileName}.join('\n  ')
+    print '\n' + dest + '\n  ' + destFiles.collect{it[1] ? it[0] + ' -> ' + it[1] : it[0]}.join('\n  ')
+    
+    return  flatFiles.collect{"%JRE_FLATTEN_DIR%\\${it.fileName}"} + destFiles.collect{'%~dp0' + (it[1] ?: it[0])}
+  }
+  
+  def createCmdFile(cmdFile, jarPaths, version, mainClassName, envs) {
+  print '\n' + cmdFile
+  cmdFile.text = """
+@echo off
+setlocal
+  
+${versionText(version)}
+${envs}
+  
+java %JVM_OPTS% %JAVA_OPTS% -cp \"${jarPaths.join(';')}\" ${mainClassName} %*
+  
+""".trim().stripIndent()
+  
+  }
+  
+  def deleteJars(dirpath) {
+    if ( !dirpath.isDirectory() ) return
+    print '\nDelete From' + dirpath
+    def fileslist = dirpath.listFiles().findAll{it.name.endsWith('.jar')}
+    print '  ' + fileslist.collect{it.name}.join('\n  ')
+  }
+
+  def validate(extension) {
+    Objects.requireNonNull(extension.dest, 'dest not set');
+    def dest = extension.dest
+    if (extension.relativeToPrograms) 
+      dest = new File(Objects.requireNonNull(System.env.SAM_PROGRAMS, "System.env.SAM_PROGRAMS not found") + extension.dest) 
+    if (dest.class != File) 
+      throw new IllegalArgumentException('dest should be a file, but was: ' + extension.dest.class);
+    return dest
+  }
+
+  def versionText(version) {
+    if (!version && version == 'unspecified') return '';
+    String s = "echo version: %APP_VERSION% (${java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.MEDIUM))}^)"
+    return """
+  SET APP_VERSION=${version}
+  if [%1]==[-v] (
+    ${s}
+    goto:eof
+  )
+  if [%1]==[--version] (
+    ${s}
+    goto:eof
+  )
+  """;
+  }
+}
+
+apply plugin: SamInstallPlugin
+
+
