@@ -9,8 +9,8 @@ class SamInstallExtension {
   boolean relativeToPrograms = false
   Map envs = [:]
   String cmdName
-  // in future this should be by default true
-  boolean deleteOldJars = false
+  boolean deleteOldJars = true
+  boolean jarPrefixed = false
 }
 
 class SamInstallPlugin implements Plugin {
@@ -29,7 +29,7 @@ class SamInstallPlugin implements Plugin {
           deleteJars(dest)
         
         if(extension.flat)
-          jarPaths = flattened(project.configurations.runtimeClasspath, libdir, dest, project.jar.archiveName)
+          jarPaths = flattened(project.configurations.runtimeClasspath, libdir, dest, project.jar.archiveName, extension.jarPrefixed)
         else 
           full()
           
@@ -39,7 +39,7 @@ class SamInstallPlugin implements Plugin {
     }
   }
   
-  def flattened(deps, libdir, dest, jarName) {
+  def flattened(deps, libdir, dest, jarName, jarPrefixed) {
     def gradleDir = Paths.get(Objects.requireNonNull(System.env.GRADLE_USER_HOME, "System.env.GRADLE_USER_HOME not set"))
     def flattenDest = Paths.get(Objects.requireNonNull(System.env.JRE_FLATTEN_DIR, "System.env.JRE_FLATTEN_DIR not set"))
     
@@ -48,12 +48,12 @@ class SamInstallPlugin implements Plugin {
     def flatFiles = deps.findAll{it.toPath().startsWith(gradleDir)}.collect{flattenDest.resolve(it.name)}
     flatFiles.each{Files.move(libdir.toPath().resolve(it.fileName), it, REPLACE_EXISTING)}
     def prefix = jarName - '.jar';
-    def destFiles = libdir.list().collect{[it, it == jarName || !it.endsWith('.jar') ? '' : prefix + '-' + it]}
+    def destFiles = libdir.list().collect{[it, it == jarName || !it.endsWith('.jar') ? '' : (jarPrefixed ? prefix + '-' : '') + it]}
     dest.list().findAll{it.endsWith('.jar') && it.startsWith(prefix)}.each{new File(dest, it).delete()}
     destFiles.each{Files.move(libdir.toPath().resolve(it[0]), dest.toPath().resolve(it[1] ?: it[0]), REPLACE_EXISTING)}
     
     print '' + flattenDest + '\n  ' + flatFiles.collect{it.fileName}.join('\n  ')
-    print '\n' + dest + '\n  ' + destFiles.collect{it[1] ? it[0] + ' -> ' + it[1] : it[0]}.join('\n  ')
+    print '\n' + dest + '\n  ' + destFiles.collect{it[1] && it[0] != it[1] ? it[0] + ' -> ' + it[1] : it[0]}.join('\n  ')
     
     return  flatFiles.collect{"%JRE_FLATTEN_DIR%\\${it.fileName}"} + destFiles.collect{'%~dp0' + (it[1] ?: it[0])}
   }
@@ -75,9 +75,8 @@ java %JVM_OPTS% %JAVA_OPTS% -cp \"${jarPaths.join(';')}\" ${mainClassName} %*
   
   def deleteJars(dirpath) {
     if (!dirpath.isDirectory()) return
-    print '\nDelete From' + dirpath
     def fileslist = dirpath.listFiles().findAll{it.name.endsWith('.jar')}
-    print '  ' + fileslist.collect{it.name}.join('\n  ')
+    println '\nDelete From' + dirpath + '\n  ' + fileslist.collect{it.name}.join('\n  ')
   }
 
   def validate(extension) {
