@@ -16,6 +16,11 @@ class SamInstallExtension {
 class SamInstallPlugin implements Plugin {
   void apply(project) {
     def extension = project.extensions.create('samInstall', SamInstallExtension)
+	project.task('installVer') {
+	  doLast {
+	    println '0.15 (Sunday, 6 December 2020)'
+	  }
+	}
     project.task('install', dependsOn: [project.installDist]) {
       doLast {
         def libdir = new File(project.installDist.destinationDir, 'lib')
@@ -50,7 +55,7 @@ class SamInstallPlugin implements Plugin {
     def prefix = jarName - '.jar';
     def destFiles = libdir.list().collect{[it, it == jarName || !it.endsWith('.jar') ? '' : (jarPrefixed ? prefix + '-' : '') + it]}
     dest.list().findAll{it.endsWith('.jar') && it.startsWith(prefix)}.each{new File(dest, it).delete()}
-    destFiles.collect{[libdir.toPath().resolve(it[0]), dest.toPath().resolve(it[1] ?: it[0])]}.findAll{Files.notExists(it[1])}.each{Files.move(it[0], it[1], REPLACE_EXISTING)}
+    destFiles.collect{[libdir.toPath().resolve(it[0]), dest.toPath().resolve(it[1] ?: it[0])]}.each{Files.move(it[0], it[1], REPLACE_EXISTING)}
     
     print "${flattenDest} (${flatFiles.size()})\n  ${flatFiles.collect{it.fileName}.join('\n  ')}"
     print "\n${dest} (${destFiles.size()})\n  ${destFiles.collect{it[1] && it[0] != it[1] ? it[0] + ' -> ' + it[1] : it[0]}.join('\n  ')}"
@@ -76,7 +81,7 @@ java %JVM_OPTS% %JAVA_OPTS% -cp \"${jarPaths.join(';')}\" ${mainClassName} %*
   def deleteJars(dirpath) {
     if (!dirpath.isDirectory()) return
     def fileslist = dirpath.listFiles().findAll{it.name.endsWith('.jar')}
-    println "\nDelete From: ${dirpath}\n  ${fileslist.collect{it.name}.join('\n  ')} (${fileslist.size()})" 
+    println "\nDelete From: ${dirpath} (${fileslist.size()})\n  ${fileslist.collect{it.name}.join('\n  ')}" 
   }
 
   def validate(extension) {
