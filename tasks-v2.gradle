@@ -74,7 +74,7 @@ java %JVM_OPTS% %JAVA_OPTS% -cp \"${jarPaths.join(';')}\" ${mainClassName} %*
   }
   
   def deleteJars(dirpath) {
-    if ( !dirpath.isDirectory() ) return
+    if (!dirpath.isDirectory()) return
     print '\nDelete From' + dirpath
     def fileslist = dirpath.listFiles().findAll{it.name.endsWith('.jar')}
     print '  ' + fileslist.collect{it.name}.join('\n  ')
