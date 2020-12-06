@@ -50,10 +50,10 @@ class SamInstallPlugin implements Plugin {
     def prefix = jarName - '.jar';
     def destFiles = libdir.list().collect{[it, it == jarName || !it.endsWith('.jar') ? '' : (jarPrefixed ? prefix + '-' : '') + it]}
     dest.list().findAll{it.endsWith('.jar') && it.startsWith(prefix)}.each{new File(dest, it).delete()}
-    destFiles.each{Files.move(libdir.toPath().resolve(it[0]), dest.toPath().resolve(it[1] ?: it[0]), REPLACE_EXISTING)}
+    destFiles.collect{[libdir.toPath().resolve(it[0]), dest.toPath().resolve(it[1] ?: it[0])]}.findAll{Files.notExists(it[1])}.each{Files.move(it[0], it[1], REPLACE_EXISTING)}
     
-    print '' + flattenDest + '\n  ' + flatFiles.collect{it.fileName}.join('\n  ')
-    print '\n' + dest + '\n  ' + destFiles.collect{it[1] && it[0] != it[1] ? it[0] + ' -> ' + it[1] : it[0]}.join('\n  ')
+    print "${flattenDest} (${flatFiles.size()})\n  ${flatFiles.collect{it.fileName}.join('\n  ')}"
+    print "\n${dest} (${destFiles.size()})\n  ${destFiles.collect{it[1] && it[0] != it[1] ? it[0] + ' -> ' + it[1] : it[0]}.join('\n  ')}"
     
     return  flatFiles.collect{"%JRE_FLATTEN_DIR%\\${it.fileName}"} + destFiles.collect{'%~dp0' + (it[1] ?: it[0])}
   }
@@ -76,7 +76,7 @@ java %JVM_OPTS% %JAVA_OPTS% -cp \"${jarPaths.join(';')}\" ${mainClassName} %*
   def deleteJars(dirpath) {
     if (!dirpath.isDirectory()) return
     def fileslist = dirpath.listFiles().findAll{it.name.endsWith('.jar')}
-    println '\nDelete From' + dirpath + '\n  ' + fileslist.collect{it.name}.join('\n  ')
+    println "\nDelete From: ${dirpath}\n  ${fileslist.collect{it.name}.join('\n  ')} (${fileslist.size()})" 
   }
 
   def validate(extension) {
